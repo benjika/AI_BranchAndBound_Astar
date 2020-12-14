@@ -4,6 +4,24 @@ np.random.RandomState(0)
 final_state_n = None
 initial_state_n = None
 final_state = None
+heuristic = 'misplaced_tile'
+
+
+def calculate_misplaced_tile(mat1, mat2):
+    list1, list2 = mat1.flatten(), mat2.flatten()
+    diffs = np.absolute(list1 - list2)
+    count_diffs = (diffs > 0).sum()
+    return count_diffs
+
+
+def calculate_manhattan_distance(mat1, mat2):
+    xs_mat1 = [np.where(mat1 == i)[1][0] for i in np.arange(9)]
+    ys_mat1 = [np.where(mat1 == i)[0][0] for i in np.arange(9)]
+    xs_mat2 = [np.where(mat2 == i)[1][0] for i in np.arange(9)]
+    ys_mat2 = [np.where(mat2 == i)[0][0] for i in np.arange(9)]
+    difs = [np.abs(x1 - x2) + np.abs(y1 - y2) for x1, x2, y1, y2 in zip(xs_mat1, xs_mat2, ys_mat1, ys_mat2)]
+    difs_sum = sum(difs)
+    return difs_sum
 
 
 class Graph:
@@ -59,11 +77,12 @@ class Node:
 
     def calculate_h(self):
         global final_state
-        final_list = final_state.flatten()
-        present_list = self.mat.flatten()
-        diffs = np.absolute(final_list - present_list)
-        count_diffs = (diffs > 0).sum()
-        return count_diffs
+        global heuristic
+
+        if heuristic == 'misplaced_tile':
+            return calculate_misplaced_tile(self.mat, final_state)
+        elif heuristic == 'manhattan_distance':
+            return calculate_manhattan_distance(self.mat, final_state)
 
 
 def a_star_print_path(max_iteration, max_depth):
@@ -189,6 +208,22 @@ def branch_and_bound(iterations_limit, depth_limit):
         graph.print_best_path(curr_iteration, max_depth)
 
 
+def test_runtime():
+    mats = {0: [],
+            1: [],
+            2: [],
+            3: [],
+            4: [],
+            5: [],
+            6: [
+                np.array([1, 2, 3, 8, 0, 7, 4, 6, 5]), np.array([4, 1, 3, 5, 6, 2, 8, 0])
+            ],
+            7: [np.array([0, 1, 8, 4, 6, 5, 7, 3, 2])],
+            8: [np.array([8, 4, 1, 3, 7, 6, 0, 2, 5])],
+            9: [np.array([4, 5, 2, 6, 0, 1, 8, 7, 3]), np.array([5, 7, 2, 3, 6, 8, 4, 1, 0]),
+                np.array([4, 5, 2, 6, 0, 1, 8, 7, 3])]}
+
+
 def a_star(iterations_limit, depth_limit):
     global initial_state_n
     global final_state_n
@@ -237,10 +272,30 @@ def a_star(iterations_limit, depth_limit):
         a_star_print_path(curr_iteration, curr_depth)
 
 
+def assign_heuristic():
+    global heuristic
+    print('Choose heuristic:')
+    print('For misplaced tile press 1')
+    print('For Manhattan press 2')
+    input1 = input("Enter heuristic")
+    print()
+    if input1 == '1':
+        heuristic = 'misplaced_tile'
+    elif input1 == '2':
+        heuristic = 'manhattan_distance'
+    else:
+        print('Wrong input was typed')
+        heuristic = 'misplaced_tile'
+    print("Heuristic is: " + heuristic)
+    print()
+
+
 def main():
     global final_state_n
     global final_state
     global initial_state_n
+
+    assign_heuristic()
     iterations_limit = 10000
     depth_limit = 30
     # final_state = np.array([2, 8, 3, 1, 6, 4, 7, 0, 5]).reshape((3, 3))
