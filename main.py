@@ -156,7 +156,7 @@ def branch_and_bound(iterations_limit, depth_limit):
         # if the current node haven't been explored yet
         elif current_node.children == []:
 
-            # in this node or it's children there is no better solution than what found
+            # here is no better solution than what found in this node or it's children
             if current_node.c > graph.upper_bound or current_node.f == depth_limit:
                 current_node.status = 'dead'
                 current_node = current_node.parent
