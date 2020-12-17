@@ -1,24 +1,30 @@
 import numpy as np
+import timeit
+import csv
+import random
+import pandas as pd
 
 np.random.RandomState(0)
 final_state_n = None
 initial_state_n = None
 final_state = None
 heuristic = 'misplaced_tile'
+is_found_solution = False
 
 
 def calculate_misplaced_tile(mat1, mat2):
     list1, list2 = mat1.flatten(), mat2.flatten()
+    list1, list2 = np.delete(list1, np.where(list1 == 0)), np.delete(list2, np.where(list2 == 0))
     diffs = np.absolute(list1 - list2)
     count_diffs = (diffs > 0).sum()
     return count_diffs
 
 
 def calculate_manhattan_distance(mat1, mat2):
-    xs_mat1 = [np.where(mat1 == i)[1][0] for i in np.arange(9)]
-    ys_mat1 = [np.where(mat1 == i)[0][0] for i in np.arange(9)]
-    xs_mat2 = [np.where(mat2 == i)[1][0] for i in np.arange(9)]
-    ys_mat2 = [np.where(mat2 == i)[0][0] for i in np.arange(9)]
+    xs_mat1 = [np.where(mat1 == i)[1][0] for i in np.arange(1, 9)]
+    ys_mat1 = [np.where(mat1 == i)[0][0] for i in np.arange(1, 9)]
+    xs_mat2 = [np.where(mat2 == i)[1][0] for i in np.arange(1, 9)]
+    ys_mat2 = [np.where(mat2 == i)[0][0] for i in np.arange(1, 9)]
     difs = [np.abs(x1 - x2) + np.abs(y1 - y2) for x1, x2, y1, y2 in zip(xs_mat1, xs_mat2, ys_mat1, ys_mat2)]
     difs_sum = sum(difs)
     return difs_sum
@@ -87,6 +93,7 @@ class Node:
 
 def a_star_print_path(max_iteration, max_depth):
     global final_state_n
+
     curr_node = final_state_n
     path = []
     print('****** A* *****')
@@ -146,16 +153,19 @@ def get_least_cost_live_index(list):
     return 0
 
 
-def branch_and_bound(iterations_limit, depth_limit):
+def branch_and_bound(iterations_limit, depth_limit, i):
     global initial_state_n
     global final_state_n
 
     graph = Graph(initial_state_n)
     current_node = initial_state_n
+    is_solved = False
+    dead_list = []
 
     if initial_state_n.h == 0:
         current_node = None
         graph.create_best_path()
+        is_solved = True
 
     curr_iteration, max_depth = 0, 0
     mat_h, mat_w = initial_state_n.mat.shape
@@ -163,23 +173,29 @@ def branch_and_bound(iterations_limit, depth_limit):
     while current_node is not None and curr_iteration <= iterations_limit:
         curr_iteration = curr_iteration + 1
         max_depth = max([max_depth, current_node.f])  # increase depth if necessary
+        print('bnb {} curr_iteration: {},max_depth: {}'.format(i, curr_iteration, max_depth))
 
-        # if we found a goal node
+        # if we found a new goal node
         if current_node.h == 0:
-            graph.upper_bound = current_node.c
-            final_state_n = current_node
-            graph.create_best_path()
+            # if we found a better path to goal node
+            if graph.upper_bound > current_node.c:
+                is_solved = True
+                graph.upper_bound = current_node.c
+                final_state_n = current_node
+                graph.create_best_path()
             current_node.status = 'dead'
+            #dead_list.append(current_node.mat.tolist())
             current_node = current_node.parent
 
         # if the current node haven't been explored yet
-        elif current_node.children == []:
+        elif len(current_node.children) == 0:
 
             # here is no better solution than what found in this node or it's children
             if current_node.c > graph.upper_bound or current_node.f == depth_limit:
                 current_node.status = 'dead'
+                #dead_list.append(current_node.mat.tolist())
                 current_node = current_node.parent
-                continue
+
             # create children node and choose the cheapest for the next iteration
             else:
                 empty_y, empty_x = get_empty_location(current_node.mat)  # get the coordinates of the empty tile
@@ -188,8 +204,15 @@ def branch_and_bound(iterations_limit, depth_limit):
                 for pot_direction, delta_x, delta_y in potential_directions:
                     child = create_potential_child(empty_x, empty_y, delta_x, delta_y, pot_direction, current_node)
                     current_node.children.append(child)
-                min_cost_children = get_least_cost_index(current_node.children)
-                current_node = current_node.children[min_cost_children]
+                    #if child.mat.tolist() in dead_list:
+                    #    child.status = 'dead'
+                if len([node for node in current_node.children if node.status == 'live']) > 0:
+                    min_cost_children = get_least_cost_live_index(current_node.children)
+                    current_node = current_node.children[min_cost_children]
+                else:
+                    current_node.status = 'dead'
+                    #dead_list.append(current_node.mat.tolist())
+                    current_node = current_node.parent
 
         # if there are live children choose the best alive
         elif len([node for node in current_node.children if node.status == 'live']) > 0:
@@ -199,32 +222,21 @@ def branch_and_bound(iterations_limit, depth_limit):
         # if all children are dead no reason to explore farther, back to parent
         else:
             current_node.status = 'dead'
+            #dead_list.append(current_node.mat.tolist())
             current_node = current_node.parent
-    if curr_iteration > iterations_limit:
+
+    """if curr_iteration > iterations_limit and not is_solved:
+        # return 'failed iteration limit'
         print('Branch And Bound passed iterations limit. No solution found in {} iteration.'.format(iterations_limit))
-    elif max_depth > depth_limit:
+    elif max_depth > depth_limit and not is_solved:
+        # return 'failed depth limit'
         print('A* passed depth limit. No solution found in {} levels.'.format(depth_limit))
     else:
-        graph.print_best_path(curr_iteration, max_depth)
+        # graph.print_best_path(curr_iteration, max_depth)"""
+    return curr_iteration, max_depth, final_state_n.c
 
 
-def test_runtime():
-    mats = {0: [],
-            1: [],
-            2: [],
-            3: [],
-            4: [],
-            5: [],
-            6: [
-                np.array([1, 2, 3, 8, 0, 7, 4, 6, 5]), np.array([4, 1, 3, 5, 6, 2, 8, 0])
-            ],
-            7: [np.array([0, 1, 8, 4, 6, 5, 7, 3, 2])],
-            8: [np.array([8, 4, 1, 3, 7, 6, 0, 2, 5])],
-            9: [np.array([4, 5, 2, 6, 0, 1, 8, 7, 3]), np.array([5, 7, 2, 3, 6, 8, 4, 1, 0]),
-                np.array([4, 5, 2, 6, 0, 1, 8, 7, 3])]}
-
-
-def a_star(iterations_limit, depth_limit):
+def a_star(iterations_limit, depth_limit, i):
     global initial_state_n
     global final_state_n
 
@@ -233,14 +245,15 @@ def a_star(iterations_limit, depth_limit):
     if initial_state_n.h == 0:
         open_list = []
 
-    curr_iteration, curr_depth = 0, 0
+    curr_iteration, max_depth = 0, 0
     mat_h, mat_w = initial_state_n.mat.shape
 
-    while len(open_list) > 0 and curr_iteration <= iterations_limit and curr_depth <= depth_limit:
+    while len(open_list) > 0:  # and curr_iteration <= iterations_limit and max_depth <= depth_limit:
         curr_iteration = curr_iteration + 1
         min_index = get_least_cost_index(open_list)  # get the index of the lowest cost in the open list
         current_node = open_list.pop(min_index)  # pop the node with the lowest cost from the open list
-        curr_depth = max([curr_depth, current_node.f + 1])  # increase depth if necessary
+        max_depth = max([max_depth, current_node.f + 1])  # increase depth if necessary
+        print('a* {} curr_iteration: {},max_depth: {}'.format(i, curr_iteration, max_depth))
         empty_y, empty_x = get_empty_location(current_node.mat)  # get the coordinates of the empty tile
         prev_direction = current_node.prev_direction  # get the direction of the parent
         potential_directions = get_potential_directions(prev_direction, mat_h, mat_w, empty_x, empty_y)
@@ -251,25 +264,103 @@ def a_star(iterations_limit, depth_limit):
             if potential_child.h == 0:
                 final_state_n = potential_child
                 open_list = []
-                curr_depth = max([curr_depth, potential_child.f])
+                max_depth = max([max_depth, potential_child.f])
                 break
             # there a node with the same matrix but better cost in the open list
-            elif len([node for node in open_list if
-                      (np.array_equal(node.mat, potential_child.mat) and node.c <= potential_child.c)]) > 0:
+            elif potential_child.mat.tolist() in [node.mat.tolist() for node in open_list]:
+                # (np.array_equal(node.mat, potential_child.mat) and node.c <= potential_child.c)]) > 0:
                 continue
             # there a node with the same matrix but better cost in the closed list
-            elif len([node for node in close_list if
-                      (np.array_equal(node.mat, potential_child.mat) and node.c <= potential_child.c)]) > 0:
+            elif potential_child.mat.tolist() in [node.mat.tolist() for node in close_list]:
+                # (np.array_equal(node.mat, potential_child.mat) and node.c <= potential_child.c)]) > 0:
                 continue
             else:
+                # open_list = [node for node in open_list if not np.array_equal(node.mat, potential_child.mat)]
+                # close_list = [node for node in close_list if not np.array_equal(node.mat, potential_child.mat)]
                 open_list.append(potential_child)
         close_list.append(current_node)
+    """
     if curr_iteration > iterations_limit:
-        print('A* passed iterations limit. No solution found in {} iteration.'.format(iterations_limit))
-    elif curr_depth > depth_limit:
-        print('A* passed depth limit. No solution found in {} levels.'.format(depth_limit))
-    else:
-        a_star_print_path(curr_iteration, curr_depth)
+        return 'failed iteration limit'
+        # print('A* passed iterations limit. No solution found in {} iteration.'.format(iterations_limit))
+    elif max_depth > depth_limit:
+        # print('A* passed depth limit. No solution found in {} levels.'.format(depth_limit))
+        return 'failed depth limit'
+    else:"""
+    # a_star_print_path(curr_iteration, max_depth)
+    return curr_iteration, max_depth
+
+
+def is_solvable(list):
+    # index = [list.index(i) for i in np.arange(9)]
+    list1 = list.copy()
+    list1.remove(0)
+    inversions_counter = 0
+    for i in np.arange(1, 8):
+        for j in np.arange(i):
+            if list1[i] < list1[j]:
+                inversions_counter += 1
+
+    return inversions_counter % 2 == 0
+
+
+def is_legit_list(list):
+    for i in np.arange(9):
+        if not list.count(i) == 1:
+            return False
+    return True
+
+
+def test_runtime():
+    global initial_state_n
+    global heuristic
+    global is_found_solution
+    global final_state
+    global final_state_n
+
+    iterations_limit = 150000
+    depth_limit = 100
+    mats = []
+    template = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    final_state = np.array([1, 2, 3, 4, 5, 6, 7, 8, 0]).reshape((3, 3))
+    final_state_n = Node(final_state, None, None, np.inf)
+    while len(mats) < 20:
+        random.shuffle(template)
+        if is_solvable(template) and template not in mats:
+            mats.append(template.copy())
+
+    df = pd.DataFrame()
+    df['Matrix'] = mats
+    df.to_csv(r'mats.csv', index=False, header=True)
+
+    results = []
+    for mat, i in zip(mats, np.arange(len(mats))):
+        initial_mat = np.array(mat).reshape((3, 3))
+        initial_state_n = Node(initial_mat, None, None, 0)
+        heuristic = 'misplaced_tile'
+        print('a_star_misplaced_tile')
+        a_star_misplaced_tile = a_star(iterations_limit, depth_limit, i)
+        initial_state_n = Node(initial_mat, None, None, 0)
+        print('bnb_misplaced_tile')
+        bnb_misplaced_tile = branch_and_bound(iterations_limit, depth_limit, i)
+        heuristic = 'manhattan_distance'
+        initial_state_n = Node(initial_mat, None, None, 0)
+        print('a_star_manhattan_distance')
+        a_star_manhattan_distance = a_star(iterations_limit, depth_limit, i)
+        initial_state_n = Node(initial_mat, None, None, 0)
+        print('bnb_manhattan_distance')
+        bnb_manhattan_distance = branch_and_bound(iterations_limit, depth_limit, i)
+        results.append(
+            (mat, a_star_misplaced_tile, bnb_misplaced_tile, a_star_manhattan_distance, bnb_manhattan_distance))
+        print(i)
+
+    with open('results.csv', 'w') as f:
+        write = csv.writer(f)
+
+        # write.writerow(['matrix', 'bnb_misplaced_tile', 'bnb_manhattan_distance'])
+        write.writerow(['matrix', 'a_star_misplaced_tile', 'bnb_misplaced_tile', 'a_star_manhattan_distance',
+                        'bnb_manhattan_distance'])
+        write.writerows(results)
 
 
 def assign_heuristic():
@@ -291,23 +382,38 @@ def assign_heuristic():
 
 
 def main():
+    pass
+    """
     global final_state_n
     global final_state
     global initial_state_n
 
-    assign_heuristic()
-    iterations_limit = 10000
-    depth_limit = 30
-    # final_state = np.array([2, 8, 3, 1, 6, 4, 7, 0, 5]).reshape((3, 3))
-    final_state = np.array([1, 2, 3, 8, 0, 4, 7, 6, 5]).reshape((3, 3))
-    final_state_n = Node(final_state, None, None, np.inf)
-    initial_state = np.array([2, 8, 3, 1, 6, 4, 7, 0, 5])
-    # np.random.shuffle(initial_state)
-    initial_state = initial_state.reshape((3, 3))
-    initial_state_n = Node(initial_state, None, None, 0)
-    branch_and_bound(iterations_limit, depth_limit)
-    a_star(iterations_limit, depth_limit)
+    iterations_limit = 150000
+    depth_limit = 100
+    final_list = [1, 2, 3, 4, 5, 6, 7, 8, 0]
+    initial_list = [4, 8, 2, 3, 0, 5, 1, 6, 7]
+    # initial_list = [1, 2, 3, 4, 5, 6, 7, 8, 0]
+    if is_legit_list(initial_list):
+        if is_solvable(initial_list):
+            final_state = np.array(final_list).reshape((3, 3))
+            final_state_n = Node(final_state, None, None, np.inf)
+            initial_state = np.array(initial_list).reshape((3, 3))
+            initial_state_n = Node(initial_state, None, None, 0)
+            assign_heuristic()
+            input1 = input("For Branch&Bound press 1. For A* press 2")
+            print()
+            if input1 == '1':
+                branch_and_bound(iterations_limit, depth_limit, "")
+            else:
+                a_star(iterations_limit, depth_limit, '')
+        else:
+            print('The matrix is not solvable ')
+    else:
+        print('The matrix is not legit')
+    """
 
+
+test_runtime()
 
 if __name__ == '__main__':
     main()
