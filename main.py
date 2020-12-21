@@ -1,36 +1,36 @@
 import numpy as np
 import csv
-import random
 import pandas as pd
+import random
 import ai_utils as utils
 import bisect
+
+phase = 'Assignment'  # 'Test' 'Assignment'
 
 
 def branch_and_bound(iterations_limit, depth_limit, i):
     current_node = utils.get_initial_state()
     upper_bound, solution_iteration = np.inf, 0
-    is_solved = False
     dead_list = []
     path = []
 
+    curr_iteration, max_depth, iterations_until_solution = 0, 0, 0
+
     if current_node.h == 0:
-        utils.assign_final_state_node(current_node)
         path = utils.create_path()
         current_node = None
-        is_solved = True
-
-    curr_iteration, max_depth, iterations_until_solution = 0, 0, 0
+        upper_bound = 0
 
     while current_node is not None:
         max_depth = max([max_depth, current_node.g])  # increase depth if necessary
-        print('bnb {} curr_iteration: {},max_depth: {}, curr_depth: {}'.format(i, curr_iteration, max_depth,
-                                                                               current_node.g))
+        if phase == 'Test':
+            print('bnb {} curr_iteration: {},max_depth: {}, curr_depth: {}'.format(i, curr_iteration, max_depth,
+                                                                                   current_node.g))
 
         # if we found a new goal node
         if current_node.h == 0:
             # if we found a better path to goal node
             if upper_bound > current_node.f:
-                is_solved = True
                 upper_bound = current_node.f
                 solution_iteration = curr_iteration
                 utils.assign_final_state_node(current_node)
@@ -49,15 +49,20 @@ def branch_and_bound(iterations_limit, depth_limit, i):
                 bisect.insort(dead_list, current_node)
                 current_node = current_node.parent
 
-            # create children node and choose the cheapest for the next iteration
+            # create children node and choose the most promising for the next iteration
             else:
                 curr_iteration = curr_iteration + 1
                 potential_children = utils.get_children(current_node)
                 for child in potential_children:
-                    if utils.bisect_index(child, dead_list) > -1:
+                    # if the new born child already been found and died
+                    if utils.node_in_list(child, dead_list):
                         child.status = 'dead'
+                    # in sort the new born to children list
+                    # sorted by : 1) live before dead 2) lower f
                     bisect.insort(current_node.children, child)
 
+                # if your most promising child is dead, kill your self and go back
+                # else choose him
                 if current_node.children[0].status == 'dead':
                     current_node.status = 'dead'
                     bisect.insort(dead_list, current_node)
@@ -65,34 +70,38 @@ def branch_and_bound(iterations_limit, depth_limit, i):
                 else:
                     current_node = current_node.children[0]
             continue
+        # this part happens on the way back:
+        # sort your children
+        # sorted by : 1) live before dead 2) lower f
         current_node.children.sort()
-        # if there are live children choose the best alive
+        # if the most promising child is a live choose him
         if current_node.children[0].status == 'live':
             current_node = current_node.children[0]
-        # if all children are dead no reason to explore farther, back to parent
+        # if the most promising child is no reason to go farther
+        # kill yourself and go back
         else:
             current_node.status = 'dead'
             bisect.insort(dead_list, current_node)
             current_node = current_node.parent
 
-    if curr_iteration > iterations_limit and not is_solved:
-        return 'failed iteration limit. iterations:{} , max_depth: {}'.format(curr_iteration, max_depth)
-    elif curr_iteration <= iterations_limit and not is_solved:
-        return 'failed to find solution. iterations:{} , max_depth: {}'.format(curr_iteration, max_depth)
+    if len(path) == 0:
+        return "failed to find solution. iterations:{} , max_depth: {}".format(curr_iteration, max_depth)
     else:
-        # print_path(curr_iteration, max_depth, 'b&b', path, solution_iterations=solution_iteration,
-        #           solution_depth=best_solution)
-        return {'best_solution': upper_bound, 'solution_iteration': solution_iteration,
-                'final_iteration': curr_iteration, 'max_depth': max_depth}
+        if phase == 'Assignment':
+            utils.print_path(curr_iteration, max_depth, 'b&b', path, solution_iterations=solution_iteration,
+                             solution_depth=upper_bound)
+        return {"solution_depth": upper_bound, "solution_iteration": solution_iteration,
+                "final_iteration": curr_iteration, "max_depth": max_depth}
 
 
 def a_star(iterations_limit, depth_limit, i):
     current_node = utils.get_initial_state()
     open_list, close_list = [current_node], []
+    path = []
 
     # if the initial state is also the final state
     if current_node.h == 0:
-        utils.assign_final_state_node(current_node)
+        path = utils.create_path()
         open_list = []
 
     curr_iteration, max_depth = 0, 0
@@ -101,8 +110,9 @@ def a_star(iterations_limit, depth_limit, i):
         curr_iteration = curr_iteration + 1
         current_node = open_list.pop(0)  # pop the node with the lowest cost from the open list
         max_depth = max([max_depth, current_node.g + 1])  # increase depth if necessary
-        print('a* {} curr_iteration: {},max_depth: {}, curr_depth: {}'.format(i, curr_iteration, max_depth,
-                                                                              current_node.g))
+        if phase == 'Test':
+            print('a* {} curr_iteration: {},max_depth: {}, curr_depth: {}'.format(i, curr_iteration, max_depth,
+                                                                                  current_node.g))
 
         potential_children = utils.get_children(current_node)
         for potential_child in potential_children:
@@ -112,36 +122,30 @@ def a_star(iterations_limit, depth_limit, i):
                 utils.assign_final_state_node(potential_child)
                 open_list = []
                 max_depth = max([max_depth, potential_child.g])
+                path = utils.create_path()
                 break
-            # there a node with the same matrix the closed list
-            elif utils.bisect_index(current_node, close_list) > -1:
+            # there a node with the same matrix the closed list or in the open list
+            elif utils.node_in_list(current_node, close_list) or utils.node_in_list(current_node, open_list):
                 continue
-            # there a node with the same matrix in the open list
-            elif utils.bisect_index(current_node, open_list) > -1:
-                index_in_open_list = utils.bisect_index(current_node, open_list)
-                if potential_child.f >= open_list[index_in_open_list].f:
-                    continue
-                else:
-                    old_node = open_list.pop(index_in_open_list)
-                    bisect.insort(open_list, potential_child)
-                    if utils.bisect_index(old_node, close_list) == -1:
-                        bisect.insort(close_list, old_node)
+            # if the potential solution if worse than the longest path (in other words - no solution)
+            elif potential_child.f > depth_limit:
+                bisect.insort(close_list, potential_child)
             else:
                 bisect.insort(open_list, potential_child)
         bisect.insort(close_list, current_node)
 
-    # if curr_iteration > iterations_limit:
-    #    return 'failed iteration limit. iterations:{} , max_depth: {}'.format(curr_iteration, max_depth)
-    # else:
-    #    # print_path(curr_iteration, max_depth, 'a*', create_path())
-    #    return {'curr_iteration': curr_iteration, 'max_depth': max_depth}
-    return {'final_iteration': curr_iteration, 'max_depth': max_depth}
+    if len(path) == 0:
+        return "failed to find solution. iterations:{} , max_depth: {}".format(curr_iteration, max_depth)
+    else:
+        if phase == 'Assignment':
+            utils.print_path(curr_iteration, max_depth, 'a*', path)
+        return {"final_iteration": curr_iteration, "max_depth": max_depth, "solution_depth": len(path) - 1}
 
 
 def test_runtime():
     iterations_limit = 150000
     depth_limit = 31
-    mats = [[2, 3, 6, 7, 5, 4, 0, 8, 1], [7, 6, 3, 5, 0, 8, 2, 1, 4]]
+    mats = []
 
     template = [0, 1, 2, 3, 4, 5, 6, 7, 8]
     utils.assign_final_state([1, 2, 3, 4, 5, 6, 7, 8, 0])
@@ -155,34 +159,42 @@ def test_runtime():
     df['Matrix'] = mats
     df.to_csv(r'mats.csv', index=False, header=True)
 
+    final_list = [1, 2, 3, 4, 5, 6, 7, 8, 0]
     results = []
     for mat, i in zip(mats, np.arange(len(mats))):
         result = {'matrix': mat}
         for curr_heuristic in ['misplaced_tile', 'manhattan_distance', 'manhattan_distance_plus_reversal_penalty']:
             utils.assign_heuristic(curr_heuristic)
 
-            initial_state = utils.init_initial_state(mat)
+            utils.assign_final_state(final_list)
+            utils.assign_initial_state(mat)
             print('a_star {} {}'.format(i, curr_heuristic))
             a_star_result = a_star(iterations_limit, depth_limit, '{} {}'.format(i, curr_heuristic))
 
-            initial_state = utils.init_initial_state(mat)
+            utils.assign_final_state(final_list)
+            utils.assign_initial_state(mat)
             print('bnb {} {}'.format(i, curr_heuristic))
             bnb_result = branch_and_bound(iterations_limit, depth_limit, '{} {}'.format(i, curr_heuristic))
 
             result['a_star_{}'.format(curr_heuristic)] = a_star_result
             result['bnb_{}'.format(curr_heuristic)] = bnb_result
 
+        avg_all, avg_a_star, avg_bnb, avg_misplaced_tile, avg_manhattan_distance, \
+        avg_manhattan_distance_plus_reversal_penalty = utils.get_avgs(result)
+
         results.append(
             (mat, result['a_star_misplaced_tile'], result['bnb_misplaced_tile'], result['a_star_manhattan_distance'],
              result['bnb_manhattan_distance'], result['a_star_manhattan_distance_plus_reversal_penalty'],
-             result['bnb_manhattan_distance_plus_reversal_penalty']))
+             result['bnb_manhattan_distance_plus_reversal_penalty'], avg_all, avg_a_star, avg_bnb, avg_misplaced_tile,
+             avg_manhattan_distance, avg_manhattan_distance_plus_reversal_penalty))
         print(i)
 
     with open('results.csv', 'w') as f:
         write = csv.writer(f)
         write.writerow(['matrix', 'a_star_misplaced_tile', 'bnb_misplaced_tile', 'a_star_manhattan_distance',
                         'bnb_manhattan_distance', 'a_star_manhattan_distance_plus_reversal_penalty',
-                        'bnb_manhattan_distance_plus_reversal_penalty'])
+                        'bnb_manhattan_distance_plus_reversal_penalty', 'avg_all', 'avg_a_star', 'avg_bnb',
+                        'avg_misplaced_tile', 'avg_manhattan_distance', 'avg_manhattan_distance_plus_reversal_penalty'])
         write.writerows(results)
 
 
@@ -190,10 +202,10 @@ def assign_heuristic_ui():
     heuristic = ''
 
     print('Choose heuristic:')
-    print('For misplaced tile press 1')
-    print('For Manhattan distance press 2')
-    print('For Manhattan distance plus reversal penalty press 3')
-    input1 = input("Enter heuristic")
+    print('For Misplaced Tile press 1')
+    print('For Manhattan Distance press 2')
+    print('For Manhattan Distance + Reversal Penalty press 3')
+    input1 = input("Enter Heuristic")
     print()
     if input1 == '1':
         heuristic = 'misplaced_tile'
@@ -214,21 +226,27 @@ def main():
     iterations_limit = 150000
     depth_limit = 31
     final_list = [1, 2, 3, 4, 5, 6, 7, 8, 0]
-    initial_list = [4, 8, 2, 3, 0, 5, 1, 6, 7]
+    utils.assign_final_state(final_list)
+
+    ###################################################
+    ###################################################
+    ## to change initial state please change this line
+    initial_list = [1, 3, 6, 4, 8, 2, 0, 5, 7]
+    ####################################################
+    ####################################################
     if utils.is_legit_list(initial_list):
         if utils.is_solvable(initial_list):
-
-            initial_state = utils.init_initial_state(initial_list)
-            utils.assign_final_state(final_list)
-
             assign_heuristic_ui()
 
-            input1 = input("For Branch&Bound press 1. For A* press 2")
+            utils.assign_initial_state(initial_list)
+            print("For Branch&Bound press 1")
+            print("For A* press 2")
+            input1 = input("")
             print()
             if input1 == '1':
-                print(branch_and_bound(initial_state, iterations_limit, depth_limit, ""))
+                print(branch_and_bound(iterations_limit, depth_limit, ""))
             else:
-                print(a_star(initial_state, iterations_limit, depth_limit, ''))
+                print(a_star(iterations_limit, depth_limit, ''))
         else:
             print('The matrix is not solvable ')
     else:
@@ -236,5 +254,7 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    test_runtime()
+    if phase == 'Assignment':
+        main()
+    elif phase == 'Test':
+        test_runtime()

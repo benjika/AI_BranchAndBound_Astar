@@ -94,7 +94,6 @@ def calculate_manhattan_distance_plus_reversal_penalty(mat1, mat2):
 
 
 def calculate_h(mat):
-    global final_state
 
     if Node.final_state is None:
         return 0
