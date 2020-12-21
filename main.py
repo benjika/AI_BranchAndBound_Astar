@@ -16,11 +16,6 @@ def branch_and_bound(iterations_limit, depth_limit, i):
 
     curr_iteration, max_depth, iterations_until_solution = 0, 0, 0
 
-    if current_node.h == 0:
-        path = utils.create_path()
-        current_node = None
-        upper_bound = 0
-
     while current_node is not None:
         max_depth = max([max_depth, current_node.g])  # increase depth if necessary
         if phase == 'Test':
@@ -70,18 +65,22 @@ def branch_and_bound(iterations_limit, depth_limit, i):
                 else:
                     current_node = current_node.children[0]
             continue
+
         # this part happens on the way back:
         # sort your children
         # sorted by : 1) live before dead 2) lower f
         current_node.children.sort()
+
         # if the most promising child is a live choose him
         if current_node.children[0].status == 'live':
             current_node = current_node.children[0]
-        # if the most promising child is no reason to go farther
+
+        # if the most promising child is dead no reason to go farther
         # kill yourself and go back
         else:
             current_node.status = 'dead'
-            bisect.insort(dead_list, current_node)
+            if not utils.node_in_list(current_node, dead_list):
+                bisect.insort(dead_list, current_node)
             current_node = current_node.parent
 
     if len(path) == 0:
@@ -99,39 +98,37 @@ def a_star(iterations_limit, depth_limit, i):
     open_list, close_list = [current_node], []
     path = []
 
-    # if the initial state is also the final state
-    if current_node.h == 0:
-        path = utils.create_path()
-        open_list = []
-
     curr_iteration, max_depth = 0, 0
 
     while len(open_list) > 0:
-        curr_iteration = curr_iteration + 1
         current_node = open_list.pop(0)  # pop the node with the lowest cost from the open list
-        max_depth = max([max_depth, current_node.g + 1])  # increase depth if necessary
         if phase == 'Test':
             print('a* {} curr_iteration: {},max_depth: {}, curr_depth: {}'.format(i, curr_iteration, max_depth,
                                                                                   current_node.g))
+        # found goal
+        if current_node.h == 0:
+            utils.assign_final_state_node(current_node)
+            open_list = []
+            path = utils.create_path()
 
-        potential_children = utils.get_children(current_node)
-        for potential_child in potential_children:
+        else:
+            potential_children = utils.get_children(current_node)
+            curr_iteration += 1
+            for potential_child in potential_children:
 
-            # found goal
-            if potential_child.h == 0:
-                utils.assign_final_state_node(potential_child)
-                open_list = []
-                max_depth = max([max_depth, potential_child.g])
-                path = utils.create_path()
-                break
-            # there a node with the same matrix the closed list or in the open list
-            elif utils.node_in_list(current_node, close_list) or utils.node_in_list(current_node, open_list):
-                continue
-            # if the potential solution if worse than the longest path (in other words - no solution)
-            elif potential_child.f > depth_limit:
-                bisect.insort(close_list, potential_child)
-            else:
-                bisect.insort(open_list, potential_child)
+                # there a node with the same matrix the closed list or in the open list
+                if utils.node_in_list(current_node, close_list) or utils.node_in_list(current_node, open_list):
+                    continue
+
+                # if the potential solution is worse than the longest possible path (in other words - no solution)
+                elif potential_child.f > depth_limit:
+                    bisect.insort(close_list, potential_child)
+
+                # there is a chance this child is in the path solution
+                else:
+                    bisect.insort(open_list, potential_child)
+
+        max_depth = max([max_depth, current_node.g])  # increase depth if necessary
         bisect.insort(close_list, current_node)
 
     if len(path) == 0:
